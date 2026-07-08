@@ -161,3 +161,8 @@ cython_debug/
 
 .ruff_cache/
 *.zip
+
+# Large data / datasets — relocated onto the fast container overlay under
+# /home/dev via a symlink (see local-data/cs336). Never commit it.
+/data
+/data/
