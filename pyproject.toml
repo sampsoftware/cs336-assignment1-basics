@@ -37,8 +37,8 @@ package = true
 python-preference = "managed"
 
 [tool.pytest.ini_options]
-log_cli = true
-log_cli_level = "WARNING"
+log_cli = false
+log_level = "DEBUG"
 log_format = "%(module)s:%(lineno)d %(message)s"
 addopts = "-s"
 
