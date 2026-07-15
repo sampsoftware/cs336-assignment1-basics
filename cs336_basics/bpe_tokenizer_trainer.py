@@ -8,11 +8,14 @@ from cs336_basics import config
 
 logger = logging.getLogger(__name__)
 
+## Capping CPU use at 85% of cpu's to leave some capacity for other tasks
+NUM_CPUS = os.cpu_count() * 85 // 100
+
+## Read ahead this many bytes
+MINI_CHUNK_SIZE = 4096
+
 ## GPT-2 Pretokenizer regex
 PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-
-## Capping CPU use at 85% of cpu's to leave some capacity for other tasks
-num_processes = os.cpu_count() * 85 // 100
 
 
 def find_chunk_boundaries(
@@ -51,13 +54,11 @@ def find_chunk_boundaries(
         chunk_boundaries = [i * chunk_size for i in range(desired_num_chunks + 1)]
         chunk_boundaries[-1] = file_size
 
-        mini_chunk_size = 4096  # Read ahead by 4k bytes at a time
-
         for bi in range(1, len(chunk_boundaries) - 1):
             initial_position = chunk_boundaries[bi]
             file.seek(initial_position)  # Start at boundary guess
             while True:
-                mini_chunk = file.read(mini_chunk_size)  # Read a mini chunk
+                mini_chunk = file.read(MINI_CHUNK_SIZE)  # Read a mini chunk
 
                 # If EOF, this boundary should be at the end of the file
                 if mini_chunk == b"":
@@ -69,7 +70,7 @@ def find_chunk_boundaries(
                 if found_at != -1:
                     chunk_boundaries[bi] = initial_position + found_at
                     break
-                initial_position += mini_chunk_size
+                initial_position += MINI_CHUNK_SIZE
 
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
@@ -231,7 +232,16 @@ def train_tokenizer(
     ]:
 
     logger.info("STARTING RUN")
+
+    ############
+    # Determine a good number of CPUs to use - the most available, unless the files are small.
+    with open(input_path,"rb") as file:
+        # Get total file size in bytes
+        file.seek(0, os.SEEK_END)
+        file_size = file.tell()
+    num_processes = max(1,min(file_size // MINI_CHUNK_SIZE, NUM_CPUS))
     logger.info("CPU count=%d, using %d processes", os.cpu_count(), num_processes)
+    #######
 
     ###############
     # Review the input file and find safe boundaries upon which to chunk the text.
@@ -243,7 +253,8 @@ def train_tokenizer(
     ###############
 
     ###############
-    # Split the chunks among CPU threads
+    # Split the chunks among CPU threads. Don't use too many threads if the files are small.
+
     pretokens = Counter()
     with Pool(num_processes) as pool:
         work = partial(pretokenize_chunk, input_path, special_tokens)
@@ -275,9 +286,9 @@ def train_tokenizer(
         merge_list.append(selected_token_pair)
         bpe_token_pair_counts.pop(selected_token_pair,0)
 
-        logger.debug("Max count %d with %d most frequent, selected %s, %d bpe pairs exist.",
-            max_count, len(most_frequent), selected_token_pair, len(bpe_token_pair_counts)
-        )
+#        logger.debug("Max count %d with %d most frequent, selected %s, %d bpe pairs exist.",
+#            max_count, len(most_frequent), selected_token_pair, len(bpe_token_pair_counts)
+#        )
         ## Now we have the token to merge this round. And, it is permanently gone from the count list.
 
         ### Merge the bpe tokens in each pretoken and update the bpe_pair counts
@@ -289,13 +300,20 @@ def train_tokenizer(
     # build the token map
     bpe_token_map = {}
     i = 0
-    for token in bpe_token_pair_counts:
-        bpe_token_map[i] = token
+
+    for i in range(256):
+        bpe_token_map[i] = bytes([i])
+
+    for token_pair in merge_list:
         i += 1
+        bpe_token_map[i] = token_pair[0]+token_pair[1]
 
     for token in special_tokens:
-        bpe_token_map[i] = token
         i += 1
+        bpe_token_map[i] = token.encode('utf-8')
     #########
+
+    assert len(bpe_token_map) == vocab_size, f"vocab_size={vocab_size} len(bpm)={len(bpe_token_map)}"
+
 
     return bpe_token_map, merge_list
