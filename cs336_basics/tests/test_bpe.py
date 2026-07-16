@@ -1,6 +1,5 @@
 from cs336_basics.bpe_tokenizer_trainer import apply_merged_token
 from cs336_basics.bpe_tokenizer_trainer import merge_and_update_counts
-from cs336_basics.config import config_logging
 import pytest
 
 
