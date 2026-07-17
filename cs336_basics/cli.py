@@ -17,9 +17,14 @@ def main():
     parser.add_argument(
         "--special-tokens", help="List of special token strings", type=list[bytes], default=["<|endoftext|>"]
     )
+    parser.add_argument("--outfile", help="Where to write the token map", type=str, default=None)
     args = parser.parse_args()
 
-    bpe_tokenizer_trainer.train_tokenizer(args.input_path, args.vocab_size, args.special_tokens)
+    outfile = None
+    if args.outfile:
+        outfile = args.input_path + ".tokens.txt"
+
+    bpe_tokenizer_trainer.train_tokenizer(args.input_path, args.vocab_size, args.special_tokens, outfile)
 
 
 if __name__ == "__main__":

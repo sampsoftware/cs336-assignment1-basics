@@ -1,0 +1,146 @@
+error[invalid-argument-type]: Argument to bound method `get` is incorrect
+   --> cs336_basics/bpe_tokenizer_trainer.py:200:27
+    |
+199 |     for pretoken in list(bpe_token_pair_to_pretoken_index[selected_token_pair]):
+200 |         n = pretokens.get(pretoken)
+    |                           ^^^^^^^^ Expected `tuple[bytes, ...]`, found `bytes`
+201 |         new_pretoken = apply_merged_token(pretoken, selected_token_pair)
+    |
+info: Matching overload defined here
+    --> stdlib/builtins.pyi:3015:9
+     |
+3013 |     # Positional-only in dict, but not in MutableMapping
+3014 |     @overload  # type: ignore[override]
+3015 |     def get(self, key: _KT, default: None = None, /) -> _VT | None:
+     |         ^^^       -------- Parameter declared here
+3016 |         """Return the value for key if key is in the dictionary, else default."""
+     |
+info: Non-matching overloads for bound method `get`:
+info:   (self, key: _KT@dict, default: _VT@dict, /) -> _VT@dict
+info:   [_T](self, key: _KT@dict, default: _T, /) -> _VT@dict | _T
+info: rule `invalid-argument-type` is enabled by default
+
+error[unresolved-attribute]: Object of type `tuple[bytes, bytes]` has no attribute `discard`
+   --> cs336_basics/bpe_tokenizer_trainer.py:220:17
+    |
+218 |             for t1, t2 in zip(pretoken[:-1], pretoken[1:]):
+219 |                 merged_bpe_pretoken_pair = (bytes(t1), bytes(t2))
+220 |                 bpe_token_pair_to_pretoken_index[merged_bpe_pretoken_pair].discard(pretoken)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+221 |
+222 |             # Add the new pair-to-pretoken map
+    |
+info: rule `unresolved-attribute` is enabled by default
+
+error[unresolved-attribute]: Object of type `tuple[bytes, bytes]` has no attribute `add`
+   --> cs336_basics/bpe_tokenizer_trainer.py:225:17
+    |
+223 |             for t1, t2 in zip(new_pretoken[:-1], new_pretoken[1:]):
+224 |                 new_bpe_token_pair = (bytes(t1), bytes(t2))
+225 |                 bpe_token_pair_to_pretoken_index[new_bpe_token_pair].add(new_pretoken)
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+226 |
+227 |             pretokens.pop(pretoken, 0)
+    |
+info: rule `unresolved-attribute` is enabled by default
+
+error[no-matching-overload]: No overload of bound method `pop` matches arguments
+   --> cs336_basics/bpe_tokenizer_trainer.py:227:13
+    |
+225 |                 bpe_token_pair_to_pretoken_index[new_bpe_token_pair].add(new_pretoken)
+226 |
+227 |             pretokens.pop(pretoken, 0)
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+228 |             assert new_pretoken not in pretokens
+229 |             pretokens[new_pretoken] = n
+    |
+info: First overload defined here
+    --> stdlib/builtins.pyi:3023:9
+     |
+3021 |     def get(self, key: _KT, default: _T, /) -> _VT | _T: ...
+3022 |     @overload
+3023 |     def pop(self, key: _KT, /) -> _VT:
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+3024 |         """D.pop(k[,d]) -> v, remove specified key and return the corresponding value.
+     |
+info: Possible overloads for bound method `pop`:
+info:   (self, key: _KT@dict, /) -> _VT@dict
+info:   (self, key: _KT@dict, default: _VT@dict, /) -> _VT@dict
+info:   [_T](self, key: _KT@dict, default: _T, /) -> _VT@dict | _T
+info: rule `no-matching-overload` is enabled by default
+
+error[invalid-argument-type]: Argument to function `__new__` is incorrect
+   --> cs336_basics/bpe_tokenizer_trainer.py:244:30
+    |
+243 |     """
+244 |     num_available_cpus = int(os.cpu_count()) * MAX_CPU_ALLOCATION_PERCENT // 100
+    |                              ^^^^^^^^^^^^^^ Expected `str | Buffer | SupportsInt | SupportsIndex | SupportsTrunc`, found `int | None`
+245 |     with open(input_path, "rb") as file:
+246 |         # Get total file size in bytes
+    |
+info: Element `None` of this union is not assignable to `str | Buffer | SupportsInt | SupportsIndex | SupportsTrunc`
+info: Matching overload defined here
+   --> stdlib/builtins.pyi:366:9
+    |
+365 |     @overload
+366 |     def __new__(cls, x: ConvertibleToInt = 0, /) -> Self: ...
+    |         ^^^^^^^      ----------------------- Parameter declared here
+367 |     @overload
+368 |     def __new__(cls, x: str | bytes | bytearray, /, base: SupportsIndex) -> Self: ...
+    |
+info: Non-matching overloads for function `__new__`:
+info:   [Self](cls, x: str | bytes | bytearray, /, base: SupportsIndex) -> Self
+info: rule `invalid-argument-type` is enabled by default
+
+error[unresolved-attribute]: Object of type `bytes` has no attribute `encode`
+   --> cs336_basics/bpe_tokenizer_trainer.py:333:49
+    |
+332 |     for i, token in enumerate(special_tokens):
+333 |         bpe_token_map[i + NUM_INITIAL_TOKENS] = token.encode("utf-8")
+    |                                                 ^^^^^^^^^^^^
+334 |
+335 |     for i, token_pair in enumerate(merge_list):
+    |
+info: rule `unresolved-attribute` is enabled by default
+
+error[invalid-argument-type]: Argument to function `build_token_map` is incorrect
+   --> cs336_basics/bpe_tokenizer_trainer.py:374:49
+    |
+373 |     merge_list = build_merges(pretokens, vocab_size - NUM_INITIAL_TOKENS - len(special_tokens))
+374 |     bpe_token_map = build_token_map(merge_list, special_tokens)
+    |                                                 ^^^^^^^^^^^^^^ Expected `list[bytes]`, found `list[str]`
+375 |
+376 |     assert len(bpe_token_map) == vocab_size, f"vocab_size={vocab_size} len(bpm)={len(bpe_token_map)}"
+    |
+info: Function defined here
+   --> cs336_basics/bpe_tokenizer_trainer.py:310:5
+    |
+310 | def build_token_map(
+    |     ^^^^^^^^^^^^^^^
+311 |     merge_list: list[tuple[bytes, bytes]], special_tokens: list[bytes]
+    |                                            --------------------------- Parameter declared here
+312 | ) -> dict[tuple[bytes, bytes], int]:
+313 |     """
+    |
+info: rule `invalid-argument-type` is enabled by default
+
+error[invalid-return-type]: Return type does not match returned value
+   --> cs336_basics/bpe_tokenizer_trainer.py:391:12
+    |
+389 |                 f.write(f"{i:>8} {str(bpe_token)}\n")
+390 |
+391 |     return bpe_token_map, merge_list
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^ expected `tuple[dict[int, bytes], list[tuple[bytes, bytes]]]`, found `tuple[dict[tuple[bytes, bytes], int], Unknown]`
+    |
+   ::: cs336_basics/bpe_tokenizer_trainer.py:344:6
+    |
+342 | def train_tokenizer(
+343 |     input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str], outfile=None
+344 | ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    |      -------------------------------------------------- Expected `tuple[dict[int, bytes], list[tuple[bytes, bytes]]]` because of return type
+345 |     """
+346 |     Train a BPE Tokenizer.
+    |
+info: rule `invalid-return-type` is enabled by default
+
+Found 8 diagnostics
