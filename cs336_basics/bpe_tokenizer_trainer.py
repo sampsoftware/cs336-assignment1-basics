@@ -5,6 +5,10 @@ import os
 from multiprocessing import Pool
 from functools import partial
 from collections import defaultdict
+import builtins
+if not hasattr(builtins, "profile"):
+    def profile(func):
+        return func
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +132,7 @@ def pretokenize_chunk(input_path: str | os.PathLike, special_tokens: set, bounds
     logger.debug("Thread %d found %d pretokens", os.getpid(), len(pretokens))
     return pretokens
 
-
+@profile
 def apply_merged_token(ptk: tuple[bytes, ...], stp: tuple[bytes, bytes]) -> dict[tuple[bytes, bytes], int]:
     """
     Given a token to merge, looks for adjacent tokens and replaces them with the merged token.
@@ -147,8 +151,8 @@ def apply_merged_token(ptk: tuple[bytes, ...], stp: tuple[bytes, bytes]) -> dict
     new_bpe_token = stp[0] + stp[1]
     just_merged = False
     for k1, k2 in zip(ptk[:-1], ptk[1:]):
-        test_token = (k1, k2)
-        if test_token == stp:
+        #test_token = (k1, k2)
+        if k1 == stp[0] and k2 == stp[1]:
             if just_merged:
                 just_merged = False
             else:
@@ -165,7 +169,7 @@ def apply_merged_token(ptk: tuple[bytes, ...], stp: tuple[bytes, bytes]) -> dict
 
     return new_ptk
 
-
+@profile
 def merge_and_update_counts(
     pretokens: dict[tuple[bytes, ...], int],
     selected_token_pair: tuple[bytes, bytes],
@@ -223,6 +227,7 @@ def merge_and_update_counts(
             pretokens[nptk] = n
 
 
+@profile
 def train_tokenizer(
     input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str]
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
@@ -282,6 +287,8 @@ def train_tokenizer(
             paired_token = (bytes(t1), bytes(t2))
             bpe_token_pair_counts[paired_token] = bpe_token_pair_counts.get(paired_token, 0) + n
             bpe_pair_to_pretoken_index[paired_token].add(ptk)
+
+    logger.debug("Found %d BPE pairs",len(bpe_token_pair_counts))
     # Now we have the bpe pairs and their initial frequencies
     # As well as a map of token pairs to in which pretokens they were found
 
@@ -299,6 +306,9 @@ def train_tokenizer(
 
         ### Merge the bpe tokens in each pretoken and update the bpe_pair counts
         merge_and_update_counts(pretokens, selected_token_pair, bpe_token_pair_counts, bpe_pair_to_pretoken_index)
+
+        if i % 100 == 0:
+            logger.debug("Vocab %d of %d",i+256+len(special_tokens),vocab_size)
 
     #########
     # build the token map

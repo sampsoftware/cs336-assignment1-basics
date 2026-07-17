@@ -1,0 +1,220 @@
+Wrote profile results to 'cli.py.lprof'
+Timer unit: 1e-06 s
+
+Total time: 0.421935 s
+File: /workspaces/cs336/assignment1-basics/cs336_basics/bpe_tokenizer_trainer.py
+Function: apply_merged_token at line 135
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   135                                           @profile
+   136                                           def apply_merged_token(ptk: tuple[bytes, ...], stp: tuple[bytes, bytes]) -> dict[tuple[bytes, bytes], int]:
+   137                                               """
+   138                                               Given a token to merge, looks for adjacent tokens and replaces them with the merged token.
+   139                                           
+   140                                               Args:
+   141                                                   ptk: The single pretoken, an array of BPE tokens
+   142                                                   stp: selected_token_pair, The token pair to merge
+   143                                           
+   144                                               Return:
+   145                                                   A newly merged pretoken
+   146                                               """
+   147     44850      14674.0      0.3      3.5      if len(ptk) == 1:
+   148                                                   return ptk
+   149                                           
+   150     44850      11530.9      0.3      2.7      ntk = []
+   151     44850      14785.0      0.3      3.5      new_bpe_token = stp[0] + stp[1]
+   152     44850      10334.6      0.2      2.4      just_merged = False
+   153    277783     101735.3      0.4     24.1      for k1, k2 in zip(ptk[:-1], ptk[1:]):
+   154                                                   #test_token = (k1, k2)
+   155    232933      61291.3      0.3     14.5          if k1 == stp[0] and k2 == stp[1]:
+   156     45096      10530.8      0.2      2.5              if just_merged:
+   157         6          1.4      0.2      0.0                  just_merged = False
+   158                                                       else:
+   159     45090      11991.9      0.3      2.8                  ntk.append(new_bpe_token)
+   160     45090       9870.5      0.2      2.3                  just_merged = True
+   161                                                   else:
+   162    187837      40691.9      0.2      9.6              if not just_merged:
+   163    153950      38385.6      0.2      9.1                  ntk.append(k1)
+   164    187837      40626.1      0.2      9.6              just_merged = False
+   165     44850      10696.8      0.2      2.5      if not just_merged:
+   166     33653       8744.8      0.3      2.1          ntk.append(k2)
+   167                                           
+   168     44850      13849.5      0.3      3.3      new_ptk = tuple(ntk)
+   169                                           
+   170     44850      22194.1      0.5      5.3      return new_ptk
+
+Total time: 2.00204 s
+File: /workspaces/cs336/assignment1-basics/cs336_basics/bpe_tokenizer_trainer.py
+Function: merge_and_update_counts at line 172
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   172                                           @profile
+   173                                           def merge_and_update_counts(
+   174                                               pretokens: dict[tuple[bytes, ...], int],
+   175                                               selected_token_pair: tuple[bytes, bytes],
+   176                                               bpe_token_pair_counts: dict[tuple[bytes, bytes], int],
+   177                                               bpe_token_pair_to_ptk_index: dict[tuple[bytes, bytes], tuple[bytes, ...]],
+   178                                           ) -> tuple[dict[tuple[bytes, ...], int], dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], tuple[bytes, ...]]]:
+   179                                               """
+   180                                               Go through all of the pretokens and do any merges necessary. For pretokens that have merges,
+   181                                               look through them and create new pairs of the new token plus the next token in the pretoken.
+   182                                               Count them appropriately.
+   183                                           
+   184                                               Args:
+   185                                                   pretokens: All of the pretokens and their counts
+   186                                                   selected_token_pair: The pair of tokens that get merged this round
+   187                                                   bpe_token_pair_counts: The counts of all bpe token pairs. Maintain this with the effects of the merges.
+   188                                                   bpe_token_pair_to_ptk_index: A map of which bpe token pairs are in which pretokens, so the process can
+   189                                                       update only those pretokens. Also maintain this index when merging
+   190                                           
+   191                                               Return:
+   192                                                   None. The relevant maps are mutated directly.
+   193                                           
+   194                                               """
+   195                                               ###
+   196     45593      19855.6      0.4      1.0      for ptk in list(bpe_token_pair_to_ptk_index[selected_token_pair]):
+   197                                                   # logger.debug("ptk_with_stp=%s",ptk)
+   198     44850      25603.5      0.6      1.3          n = pretokens.get(ptk, 0)
+   199     44850     640965.6     14.3     32.0          nptk = apply_merged_token(ptk, selected_token_pair)
+   200                                           
+   201     44850      13200.5      0.3      0.7          if ptk != nptk:
+   202                                                       ## Decrement/remove all counts from the old pretoken
+   203    277783      96050.6      0.3      4.8              for t1, t2 in zip(ptk[:-1], ptk[1:]):
+   204    232933     114218.4      0.5      5.7                  new_pair = (bytes(t1), bytes(t2))
+   205    232933      87242.1      0.4      4.4                  new_count = bpe_token_pair_counts.get(new_pair, 0) - n
+   206    232933      55012.3      0.2      2.7                  if new_count > 0:
+   207    185318      57738.6      0.3      2.9                      bpe_token_pair_counts[new_pair] = new_count
+   208                                                           else:
+   209     47615      13652.0      0.3      0.7                      bpe_token_pair_counts.pop(new_pair, 0)
+   210                                                       ## Add all counts from the new pretoken
+   211    232693      83730.5      0.4      4.2              for t1, t2 in zip(nptk[:-1], nptk[1:]):
+   212    187843      89161.7      0.5      4.5                  new_pair = (bytes(t1), bytes(t2))
+   213    187843      76419.2      0.4      3.8                  bpe_token_pair_counts[new_pair] = bpe_token_pair_counts.get(new_pair, 0) + n
+   214                                           
+   215                                                       ## Remove the old pair-to-pretoken map
+   216    277783      92193.9      0.3      4.6              for t1, t2 in zip(ptk[:-1], ptk[1:]):
+   217    232933     108551.0      0.5      5.4                  paired_token = (bytes(t1), bytes(t2))
+   218    232933     109959.5      0.5      5.5                  bpe_token_pair_to_ptk_index[paired_token].discard(ptk)
+   219                                           
+   220                                                       ## Add the new pair-to-pretoken map
+   221    232693      82017.5      0.4      4.1              for t1, t2 in zip(nptk[:-1], nptk[1:]):
+   222    187843      88582.8      0.5      4.4                  paired_token = (bytes(t1), bytes(t2))
+   223    187843      89835.9      0.5      4.5                  bpe_token_pair_to_ptk_index[paired_token].add(nptk)
+   224                                           
+   225     44850      18374.7      0.4      0.9              pretokens.pop(ptk, 0)
+   226     44850      18837.6      0.4      0.9              assert nptk not in pretokens
+   227     44850      20839.6      0.5      1.0              pretokens[nptk] = n
+
+Total time: 4.25645 s
+File: /workspaces/cs336/assignment1-basics/cs336_basics/bpe_tokenizer_trainer.py
+Function: train_tokenizer at line 230
+
+Line #      Hits         Time  Per Hit   % Time  Line Contents
+==============================================================
+   230                                           @profile
+   231                                           def train_tokenizer(
+   232                                               input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str]
+   233                                           ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+   234                                               """
+   235                                               Train a BPE Tokenizer.
+   236                                           
+   237                                               Args:
+   238                                                   input_path: Where to get the file of text to train the tokenizer.
+   239                                                   vocab_size: Size of the ending vocabulary after all of the byte-pair merges. Includes 256 UTF-8
+   240                                                       bytes, the special tokens, and then all merges to bring up to vocab_size.
+   241                                                   special_tokens: A list of special tokens.
+   242                                           
+   243                                               Return:
+   244                                                   The BPE Token map, mapping integer tokens to byte arrays.
+   245                                                   A list of all merges, in order.
+   246                                               """
+   247                                           
+   248         1        430.5    430.5      0.0      logger.info("STARTING RUN")
+   249                                           
+   250                                               ############
+   251                                               # Determine a good number of CPUs to use - the most available, unless the files are small.
+   252         2        743.7    371.9      0.0      with open(input_path, "rb") as file:
+   253                                                   # Get total file size in bytes
+   254         1          4.1      4.1      0.0          file.seek(0, os.SEEK_END)
+   255         1          1.1      1.1      0.0          file_size = file.tell()
+   256         1          2.1      2.1      0.0      num_processes = max(1, min(file_size // MINI_CHUNK_SIZE, NUM_CPUS))
+   257         1        394.3    394.3      0.0      logger.info("CPU count=%d, using %d processes", os.cpu_count(), num_processes)
+   258                                               #######
+   259                                           
+   260                                               ###############
+   261                                               # Review the input file and find safe boundaries upon which to chunk the text.
+   262         1       1238.1   1238.1      0.0      boundaries = find_chunk_boundaries(input_path, num_processes, b"<|endoftext|>")
+   263         1          0.4      0.4      0.0      bounds = []
+   264        28          9.9      0.4      0.0      for start, end in zip(boundaries[:-1], boundaries[1:]):
+   265        27          8.3      0.3      0.0          bounds.append((start, end))
+   266                                               ## Now we have the boundaries
+   267                                               ###############
+   268                                           
+   269                                               ###############
+   270                                               # Split the chunks among CPU threads. Don't use too many threads if the files are small.
+   271         1         13.6     13.6      0.0      pretokens = Counter()
+   272         2      36581.6  18290.8      0.9      with Pool(num_processes) as pool:
+   273         1         15.2     15.2      0.0          work = partial(pretokenize_chunk, input_path, special_tokens)
+   274         1         80.6     80.6      0.0          pretoken_iter = pool.imap_unordered(work, bounds)
+   275        28    1488560.1  53162.9     35.0          for ptk in pretoken_iter:
+   276        27     113476.1   4202.8      2.7              pretokens.update(ptk)
+   277         1        676.1    676.1      0.0      logger.debug("Found %d pretokens", len(pretokens))
+   278                                               # Now we have all of the wordlike pretokens
+   279                                               ##############
+   280                                           
+   281                                               ##############
+   282                                               # Assemble an index of paired BPE tokens and their frequencies
+   283         1          0.7      0.7      0.0      bpe_token_pair_counts = {}
+   284         1          4.0      4.0      0.0      bpe_pair_to_pretoken_index = defaultdict(set)
+   285     13112       5001.7      0.4      0.1      for ptk, n in pretokens.items():
+   286     90844      33199.4      0.4      0.8          for t1, t2 in zip(ptk[:-1], ptk[1:]):
+   287     77733      37481.8      0.5      0.9              paired_token = (bytes(t1), bytes(t2))
+   288     77733      29966.4      0.4      0.7              bpe_token_pair_counts[paired_token] = bpe_token_pair_counts.get(paired_token, 0) + n
+   289     77733      35259.5      0.5      0.8              bpe_pair_to_pretoken_index[paired_token].add(ptk)
+   290                                           
+   291         1        619.4    619.4      0.0      logger.debug("Found %d BPE pairs",len(bpe_token_pair_counts))
+   292                                               # Now we have the bpe pairs and their initial frequencies
+   293                                               # As well as a map of token pairs to in which pretokens they were found
+   294                                           
+   295                                               ##############
+   296                                               # Loop to generate merges, one merged bpe token per loop
+   297         1          0.8      0.8      0.0      merge_list = []
+   298       744        297.5      0.4      0.0      for i in range(vocab_size - 256 - len(special_tokens)):
+   299                                                   ###
+   300                                                   # Select a token. It will be the one with the highest count and the greatest lexical value.
+   301       743      70002.7     94.2      1.6          max_count = max(bpe_token_pair_counts.values())
+   302       743     201847.1    271.7      4.7          most_frequent = [k for k, v in bpe_token_pair_counts.items() if v == max_count]
+   303       743       1101.6      1.5      0.0          selected_token_pair = sorted(most_frequent)[len(most_frequent) - 1]
+   304       743        324.6      0.4      0.0          merge_list.append(selected_token_pair)
+   305       743        462.5      0.6      0.0          bpe_token_pair_counts.pop(selected_token_pair, 0)
+   306                                           
+   307                                                   ### Merge the bpe tokens in each pretoken and update the bpe_pair counts
+   308       743    2192049.4   2950.3     51.5          merge_and_update_counts(pretokens, selected_token_pair, bpe_token_pair_counts, bpe_pair_to_pretoken_index)
+   309                                           
+   310       743        375.3      0.5      0.0          if i % 100 == 0:
+   311         8       4709.7    588.7      0.1              logger.debug("Vocab %d of %d",i+256+len(special_tokens),vocab_size)
+   312                                           
+   313                                               #########
+   314                                               # build the token map
+   315         1          0.3      0.3      0.0      bpe_token_map = {}
+   316         1          0.3      0.3      0.0      i = 0
+   317                                           
+   318       257         66.4      0.3      0.0      for i in range(256):
+   319       256        107.1      0.4      0.0          bpe_token_map[i] = bytes([i])
+   320                                           
+   321       744        225.0      0.3      0.0      for token_pair in merge_list:
+   322       743        196.6      0.3      0.0          i += 1
+   323       743        329.1      0.4      0.0          bpe_token_map[i] = token_pair[0] + token_pair[1]
+   324                                           
+   325         2          1.2      0.6      0.0      for token in special_tokens:
+   326         1          0.5      0.5      0.0          i += 1
+   327         1          4.0      4.0      0.0          bpe_token_map[i] = token.encode("utf-8")
+   328                                               #########
+   329                                           
+   330         1          1.1      1.1      0.0      assert len(bpe_token_map) == vocab_size, f"vocab_size={vocab_size} len(bpm)={len(bpe_token_map)}"
+   331         1        575.6    575.6      0.0      logger.debug("Number of merges=%d", len(merge_list))
+   332                                           
+   333         1          2.8      2.8      0.0      return bpe_token_map, merge_list
+

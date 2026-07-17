@@ -11,11 +11,11 @@ def main():
 
     parser = argparse.ArgumentParser("BPE Token Trainer")
     parser.add_argument(
-        "--input_path", help="Path to the training corpus", default=config.get_data_dir(1) + "verysmall_tiny.txt"
+        "--input-path", help="Path to the training corpus", default=config.get_data_dir(1) + "verysmall_tiny.txt"
     )
-    parser.add_argument("--vocab_size", help="Size of the finished vocabulary", type=int, default=300)
+    parser.add_argument("--vocab-size", help="Size of the finished vocabulary", type=int, default=300)
     parser.add_argument(
-        "--special_tokens", help="List of special token strings", type=list[bytes], default=["<|endoftext|>"]
+        "--special-tokens", help="List of special token strings", type=list[bytes], default=["<|endoftext|>"]
     )
     args = parser.parse_args()
 
