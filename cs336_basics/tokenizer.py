@@ -149,8 +149,9 @@ class Tokenizer:
             Iterable list of token ids.
 
         """
+        for text in iterable:
+            yield from(self.encode(text))
 
-        pass
 
     def decode(self, ids: list[int]) -> str:
         """
