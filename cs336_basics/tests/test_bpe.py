@@ -1,5 +1,8 @@
-from cs336_basics.bpe_tokenizer_trainer import apply_merged_token
-from cs336_basics.bpe_tokenizer_trainer import merge_and_update_counts
+from cs336_basics.bpe import apply_merged_token
+from cs336_basics.tokenizer_trainer import merge_and_update_counts
+
+from collections import defaultdict
+
 import pytest
 
 
@@ -95,4 +98,12 @@ def test_apply_merged_token(pretoken, merged, expected):
     ],
 )
 def test_merge_and_update_counts(pretokens, selected_token_pair, counts_in, expected_pretokens, expected_counts):
-    assert merge_and_update_counts(pretokens, selected_token_pair, counts_in) == (expected_pretokens, expected_counts)
+    bpe_token_pair_to_pretoken_index = defaultdict(set)
+    for i, (pretoken, n) in enumerate(pretokens.items()):
+        for t1, t2 in zip(pretoken[:-1], pretoken[1:]):
+            new_bpe_token_pair = (bytes(t1), bytes(t2))
+            bpe_token_pair_to_pretoken_index[new_bpe_token_pair].add(pretoken)
+
+    merge_and_update_counts(pretokens, selected_token_pair, counts_in, bpe_token_pair_to_pretoken_index)
+    assert pretokens == expected_pretokens
+    assert counts_in == expected_counts

@@ -8,9 +8,9 @@ from collections import defaultdict
 import builtins
 import base64
 from cs336_basics import util
+from cs336_basics import bpe
 
 if not hasattr(builtins, "profile"):
-
     def profile(func):
         return func
 
@@ -18,14 +18,8 @@ if not hasattr(builtins, "profile"):
 logger = logging.getLogger(__name__)
 
 MAX_CPU_ALLOCATION_PERCENT = 85
-NUM_INITIAL_TOKENS = 256
-
-## Read ahead this many bytes
 MINI_CHUNK_SIZE = 4096
 MAX_CHUNK_SIZE = 512 * 2**20  # MIB
-
-## GPT-2 Pretokenizer regex
-PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 
 
 def find_chunk_boundaries(
@@ -129,62 +123,18 @@ def pretokenize_chunk(input_path: str | os.PathLike, special_tokens: list[bytes]
             if special_tokens:
                 docs = re.split(b"|".join(re.escape(t) for t in special_tokens), data)
                 for doc in docs[:-1]:
-                    extend_pretoken_map(pretokens, doc.decode("utf-8", errors="ignore"))
+                    bpe.extend_pretoken_map(pretokens, doc.decode("utf-8", errors="ignore"))
                 buffer = docs[-1]
             else:
                 buffer = data
 
             pchunk_cursor += pretoken_read_chunk_size
-        extend_pretoken_map(pretokens, buffer.decode("utf-8", errors="ignore"))
+        bpe.extend_pretoken_map(pretokens, buffer.decode("utf-8", errors="ignore"))
 
         logger.debug("Thread %d found %d pretokens", os.getpid(), len(pretokens))
     return pretokens
 
 
-def extend_pretoken_map(pretokens, doc):
-    pretoken_matches = re.finditer(PAT, doc)
-    for pretoken_match in pretoken_matches:
-        pretoken_string = pretoken_match.group(0)
-        pretoken_bytes = []
-        for b in pretoken_string.encode("utf-8"):
-            pretoken_bytes.append(bytes([b]))
-        pretoken = tuple(pretoken_bytes)
-        pretokens[pretoken] += 1
-
-
-@profile
-def apply_merged_token(pretoken: tuple[bytes, ...], selected_bpe_pair: tuple[bytes, bytes]) -> tuple[bytes, ...]:
-    """
-    Given a token to merge, looks for adjacent tokens and replaces them with the merged token.
-
-    Args:
-        pretoken: The single pretoken, an array of BPE tokens
-        selected_bpe_pair: The token pair to merge
-
-    Returns:
-        A newly merged pretoken
-    """
-    if len(pretoken) == 1:
-        return pretoken
-
-    new_pretoken = []
-    new_bpe_token = selected_bpe_pair[0] + selected_bpe_pair[1]
-    just_merged = False
-    for k1, k2 in zip(pretoken[:-1], pretoken[1:]):
-        if k1 == selected_bpe_pair[0] and k2 == selected_bpe_pair[1]:
-            if just_merged:
-                just_merged = False
-            else:
-                new_pretoken.append(new_bpe_token)
-                just_merged = True
-        else:
-            if not just_merged:
-                new_pretoken.append(k1)
-            just_merged = False
-    if not just_merged:
-        new_pretoken.append(k2)
-
-    return tuple(new_pretoken)
 
 
 @profile
@@ -213,7 +163,7 @@ def merge_and_update_counts(
 
     for pretoken in list(bpe_token_pair_to_pretoken_index[selected_token_pair]):
         n = pretokens[pretoken]
-        new_pretoken = apply_merged_token(pretoken, selected_token_pair)
+        new_pretoken = bpe.apply_merged_token(pretoken, selected_token_pair)
 
         if pretoken != new_pretoken:
             # Decrement/remove all counts from the old pretoken
@@ -341,14 +291,14 @@ def build_token_map(merge_list: list[tuple[bytes, bytes]], special_tokens: list[
     bpe_token_map = {}
     num_special_tokens = len(special_tokens)
 
-    for i in range(NUM_INITIAL_TOKENS):
+    for i in range(bpe.NUM_INITIAL_TOKENS):
         bpe_token_map[i] = bytes([i])
 
     for i, token in enumerate(special_tokens):
-        bpe_token_map[i + NUM_INITIAL_TOKENS] = token.encode("utf-8")
+        bpe_token_map[i + bpe.NUM_INITIAL_TOKENS] = token.encode("utf-8")
 
     for i, token_pair in enumerate(merge_list):
-        bpe_token_map[i + NUM_INITIAL_TOKENS + num_special_tokens] = token_pair[0] + token_pair[1]
+        bpe_token_map[i + bpe.NUM_INITIAL_TOKENS + num_special_tokens] = token_pair[0] + token_pair[1]
 
     return bpe_token_map
 
@@ -387,7 +337,7 @@ def train_tokenizer(
             pretokens.update(ptk)
     logger.debug("Found %d pretokens", len(pretokens))
 
-    merge_list = build_merges(pretokens, vocab_size - NUM_INITIAL_TOKENS - len(special_bytes))
+    merge_list = build_merges(pretokens, vocab_size - bpe.NUM_INITIAL_TOKENS - len(special_bytes))
 
     bpe_token_map = build_token_map(merge_list, special_tokens)
 
@@ -398,7 +348,7 @@ def train_tokenizer(
         len(bpe_token_map),
         len(merge_list),
         len(special_bytes),
-        NUM_INITIAL_TOKENS,
+        bpe.NUM_INITIAL_TOKENS,
     )
 
     if outfile:

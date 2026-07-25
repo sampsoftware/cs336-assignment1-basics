@@ -228,3 +228,93 @@ scaling laws). Worth flagging if they show up again:
 - **Working style:** responds best to Socratic guidance and pointed code review, not
   handed solutions; experienced enough to self-diagnose given the right nudge. Terse,
   specific feedback lands; over-explaining and over-flagging do not.
+
+---
+
+## 7. Session 2 — Streaming trainer + Tokenizer (encode/decode): RESUME STATUS
+
+_Picking the work back up starts here. This section is the live to-do, not a reflection._
+
+### What got done this session
+
+**Trainer — streaming pretokenizer rewrite (done, verified).**
+- Rewrote `pretokenize_chunk` to **stream** the file in blocks (`MINI_CHUNK_SIZE * 16`)
+  instead of `f.read(end - start)` whole-chunk. Motivation: OWT training OOM'd at
+  ~61 GiB against the old 62 GiB WSL2 ceiling.
+- Core loop: `data = carry + f.read(min(block, end - cursor))`, split on special-token
+  **bytes** pattern (`b"|".join(re.escape(t) ...)`), emit all-but-last segment, **carry
+  the last** segment forward (handles both partial-token and partial-doc at block seams).
+  Decode **per segment** (`errors="ignore"`), not per block — keeps UTF-8 chars whole
+  across seams. `else` branch (no special tokens) carries `data` whole.
+- Special tokens now stored as **`list[bytes]`**, sorted length-desc (longest-match).
+- **Verified behavior-preserving:** new OWT vocab/merges are **byte-identical** to the
+  pre-streaming `.bk` backups (`diff` clean). Peak memory dropped from ~61 → ~24 GiB.
+
+**Infra fixes (all real, all landed):**
+- WSL2 memory: was 62 GiB (default 50% of 128 GiB host). Raised to 94 via
+  `%UserProfile%\.wslconfig` (`memory=96GB`, `swap=32GB`, `[experimental]
+  autoMemoryReclaim=gradual`). `wsl --shutdown` to apply (kills container).
+- cgroup memory logging: env is **cgroup v2** now (was v1 pre-reboot). `util.py`
+  resolves `/proc/self/cgroup` → `.../memory.current`, wrapped fail-soft (a telemetry
+  read must NEVER crash the run — it did twice: EROFS write, then v1-path FileNotFound).
+- `util.py` bug fixed: `FileHandler("train.log")` was created but never `addHandler`ed —
+  logs weren't being written. Also filter belongs on **handlers**, not the root logger.
+- Trainer bug fixed: `merge_and_update_counts` double-removed the selected pair (explicit
+  `pop` + subtract-loop). Removed the pop; added a **post-merge assert** that the pair is
+  gone (correct as post-condition, was mis-placed as pre-condition first).
+
+**Training runs complete & saved (with `--outfile` this time):**
+- OWT 32k and TinyStories 10k tokenizers trained, base64-serialized, verified.
+- Stats generated. **Longest OWT token = 64 B of mojibake** (`ÃÂÃÂ…`, double-encoded
+  UTF-8); other long tokens are ASCII-art rules (`----`, `====`). TinyStories longest =
+  15 B real words (` accomplishment`). Histogram saved to scratchpad. This is the answer
+  to `train_bpe_expts_owt` 2a/2b + `tokenizer_experiments` 2b.
+
+**Tokenizer class (`tokenizer.py`) — encode/decode:**
+- `__init__` — DONE. Copies vocab/merges (`dict(...)`/`list(...)`), builds `_special_token_bytes`
+  (sorted len-desc), `_merge_ranks` (`pair→rank`, O(1)), `_token_to_id` (inverse of vocab).
+  Appends special tokens to vocab if absent (`max(self.vocab)+1`). Uniqueness assert.
+- `from_files` — DONE. classmethod, parses base64 vocab/merges, `return cls(...)`.
+- `decode` — DONE: `b"".join(self.vocab[i] for i in ids).decode("utf-8", errors="replace")`.
+- `encode` — **DONE and hand-traced** against §2.6 oracle → `[9,7,1,5,10,3]`. Structure:
+  capturing-group `re.split` on specials (keeps them) → walk in order → special piece =
+  `_token_to_id[piece.encode("utf-8")]`; text piece = pretokenize (ordered list, dupes
+  kept — NOT a Counter) → per-pretoken rank-merge loop (`min(possible_merges,
+  key=self._merge_ranks.__getitem__)` + `bpe.apply_merged_token`) → per-token
+  `_token_to_id` lookup.
+
+### IMMEDIATE next steps (in order)
+
+1. **Add the empty-special-tokens guard in `encode`.** If `self.special_tokens` is empty,
+   the split pattern becomes `"()"` and `re.split` shreds text into single chars →
+   corrupts pretokenization. Guard: no specials → `docs_and_sts = [text]` (skip split).
+   **`test_encode` uses no special tokens, so it FAILS without this guard.**
+2. **Uncomment `assert t.encode(text) == encoded`** in `test_encode` (§2.6 oracle). Run it.
+3. **`encode_iterable`** — still a stub (`pass`). It's the lazy wrapper:
+   `for chunk in iterable: yield from self.encode(chunk)`. No byte-chunking needed —
+   the iterable (file handle) already yields lines.
+4. **Extract `bpe.py`** — shared module for `PAT` + `apply_merged_token` (currently
+   `encode` calls `bpe.apply_merged_token`/`bpe.PAT` but they still live in the trainer).
+   Decided naming: **`bpe.py`** (primitives, leaf) / **`tokenizer.py`** (class) /
+   rename `bpe_tokenizer_trainer.py` → **`tokenizer_trainer.py`**. Update `cli.py`,
+   `pyproject` `[project.scripts]`, imports. Both trainer and tokenizer import from `bpe`
+   (acyclic). `bpe.py` should expose an encode-appropriate `pretokenize` that returns an
+   **ordered list** (trainer `Counter`s it; encoder uses it directly).
+5. **Two high-value tests:** (a) special-token-in-text (`"a<|endoftext|>b"` → special id
+   at the right position — currently the special branch is untested), (b) **round-trip**
+   `decode(encode(s)) == s` for strings incl. special token, non-ASCII/emoji, whitespace
+   runs.
+
+### Landmines / notes for resumption
+- Recurring typo: `__get_item__` → **`__getitem__`** (bit us 3×). Consider
+  `key=lambda p: self._merge_ranks[p]` to sidestep it (possible_merges is pre-filtered).
+- `encode` needs **ordered pretokens with duplicates** — do NOT reuse the trainer's
+  Counter-based `extend_pretoken_map` (dedups, loses order). Pretokenize inline / via a
+  list-returning helper.
+- `test_bpe.py` `test_merge_and_update_counts` was updated for the 4-arg mutate-in-place
+  signature (builds a `defaultdict(set)` index, asserts mutated dicts). Passing 18/18.
+- Then the assignment moves to **Section 3: Transformer LM** (linear, embedding, rmsnorm,
+  rope, softmax, attention, block, LM). Did a lot of conceptual groundwork already:
+  input `(batch, seq)` → output `(batch, seq, vocab)`; per-position next-token prediction;
+  causal mask enables parallel training; cross-entropy = -log(p_true) = bits-to-encode
+  reality; LM = compressor.
