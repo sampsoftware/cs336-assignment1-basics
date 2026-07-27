@@ -1,5 +1,9 @@
 import torch
 import torch.nn as nn
+from torch import Tensor
+from jaxtyping import Bool, Float, Int
+
+
 from einops import rearrange, einsum
 
 class Linear(nn.Module):
@@ -25,7 +29,7 @@ class Linear(nn.Module):
             torch.empty(out_features, in_features, device=device, dtype=dtype)
         )
 
-        nn.init.trunc_normal_(self.wweight)
+        nn.init.trunc_normal_(self.weight)
 
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -33,7 +37,7 @@ class Linear(nn.Module):
           Apply the linear transformation to the input.
         """
 
-        y = einsum(x, self.w, "... d_in, d_out d_in -> ... d_out")
+        y = einsum(x, self.weight, "... d_in, d_out d_in -> ... d_out")
 
         return y
 
@@ -112,7 +116,56 @@ class RMSNorm(nn.Module):
         return out
 
 
+class SwiGLU(nn.Module):
 
+    def __init__(
+        self,
+        d_model: int,
+        d_ff: int
+    ):
+        """
+        Given the weights of a SwiGLU network, return the output of your implementation with these weights.
 
+        Args:
+            d_model (int): Dimensionality of the feedforward input and output.
+            d_ff (int): Dimensionality of the up-project happening internally to your swiglu.
+            w1_weight (Float[Tensor, "d_ff d_model"]): Stored weights for W1
+            w2_weight (Float[Tensor, "d_model d_ff"]): Stored weights for W2
+            w3_weight (Float[Tensor, "d_ff d_model"]): Stored weights for W3
+            in_features (Float[Tensor, "... d_model"]): Input embeddings to the feed-forward layer.
 
+        Returns:
+            Float[Tensor, "... d_model"]: Output embeddings of the same shape as the input embeddings.
+        """
+
+        super().__init__()
+
+        self.w1 = Linear(d_model, d_ff)
+        self.w2 = Linear(d_ff, d_model)
+        self.w3 = Linear(d_model, d_ff)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        FFN(𝑥) = SwiGLU(𝑥, 𝑊1, 𝑊2, 𝑊3) 
+        = 𝑊2 * (
+            SiLU(𝑊1 * 𝑥) 
+            *
+            (𝑊3 * 𝑥)
+        )
+
+        = 𝑊2(
+            (W1 x) * sigmoid(𝑊1 𝑥) 
+            *
+            (𝑊3 𝑥)
+        )
+
+    
+        """
+
+        W1x = self.w1(x)
+        sigmoid_W1x = torch.sigmoid(W1x)
+        silu = W1x * sigmoid_W1x
+        W3x = self.w3(x)
+
+        return self.w2(silu * W3x)
 
