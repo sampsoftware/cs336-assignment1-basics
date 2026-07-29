@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 from jaxtyping import Bool, Float, Int
+import math
 
 
 from einops import rearrange, einsum
@@ -168,4 +169,76 @@ class SwiGLU(nn.Module):
         W3x = self.w3(x)
 
         return self.w2(silu * W3x)
+
+
+class RotaryPositionalEmbedding(nn.Module):
+    """
+    """
+
+    def __init__(self, theta: float, d_k: int, max_seq_len: int, device=None):
+        """ 
+        Construct the RoPE module and create buffers for sin and cos values. Create a position tensor rank == 1
+        with initial values [0,1,...,len-1]. Then another tensor rank == 1 with values of the numerator of the
+        RoPE formula. Use outer to create a rank == 2 tensor. So theta[x,y] position[x] for all x * inverse_frequencies[y]
+        for all y. self.register_buffer uses the superclass's register function to make torch aware of the 
+        tensor, and fill it with the cos or sin of the theta_ik.
+
+        Args:
+            theta: float  Θ value for the RoPE
+            d_k: int  dimension of query and key vectors
+            max_seq_len: int  Maximum sequence length that will be input
+            device: torch.device | None = None  Device to store the buffer on
+
+        Returns:
+            None
+
+        """
+
+        position = torch.arange(max_seq_len)
+        inverse_frequencies = 1 / (theta**(2*(torch.arange(d_k//2)/d_k)))
+        theta_ik = torch.outer(position, inverse_frequencies)
+        self.register_buffer("cos_table",torch.cos(theta_ik), persistent=False)
+        self.register_buffer("sin_table",torch.sin(theta_ik), persistent=False)
+
+
+    def forward(self, x: torch.Tensor, token_positions: torch.Tensor) -> torch.Tensor:
+        """
+        Process an input tensor of shape (..., seq_len, d_k) and return a tensor of the same shape. Note 
+        that you should tolerate x with an arbitrary number of batch dimensions. You should assume 
+        that the token positions are a tensor of shape (..., seq_len) specifying the token positions of 
+        x along the sequence dimension. You should use the token positions to slice your (possibly precomputed) 
+        cos and sin tensors along the sequence dimension.
+
+        Args:
+            x: Tensor to work on
+            token_positions: The absolute position of the tokens represented in x -- they may not be simply
+                1..n because the caller may be operating in the middle of a range or with scattered tokens for
+                reasons of its own.
+
+        Returns:
+            A tensor like x but with the rotational position information encoded into it.
+
+        """
+
+        # Break the features dimension into two axes
+        # Visualization: take the [batch seq feature] cube and make it into two cubes, cube 1 is 
+        # [batch seq odd_indexed_features] and the second is [batch seq even_indexed_features].
+        # An alternative vision that matches the code is d/2 new cubes each with even and odd indexed features.
+        x_planes = rearrange(x,"... (a b) -> ... a b", b = 2)
+
+        # Apply the rotation matrix R_ik = ([cos, -sin],[sin, cos])
+        # new_k1 = old_k1*cos - old_k2*sin; new_k2 = old_k1*sin + old_k2*cos
+        # rotated_plane_halves[0] has the new_k1s and rph[1] has new_k2s
+        rotated_plane_halves = [
+            x_planes[...,0] * self.cos_table[token_positions] - x_planes[...,1] * self.sin_table[token_positions],
+            x_planes[...,0] * self.sin_table[token_positions] + x_planes[...,1] * self.cos_table[token_positions]
+        ]
+
+        # Merge the feature planes back into one axis. The first dimension of rotated_plane_halves goes to the list
+        # created applying the rotation matrix 
+        x_rotated_features = rearrange(rotated_plane_halves,"b ... a -> ... (a b)")
+
+        return x_rotated_features
+    
+
 
