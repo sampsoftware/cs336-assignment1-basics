@@ -193,6 +193,7 @@ class RotaryPositionalEmbedding(nn.Module):
             None
 
         """
+        super().__init__()
 
         position = torch.arange(max_seq_len)
         inverse_frequencies = 1 / (theta**(2*(torch.arange(d_k//2)/d_k)))
